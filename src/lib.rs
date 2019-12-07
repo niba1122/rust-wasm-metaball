@@ -30,11 +30,21 @@ uniform vec2  mouse;
 uniform vec2  resolution;
 
 const float sphereSize = 0.5; // 球の半径
+const float distance = 1.4;
+
+const vec3 sphere1Center = vec3(distance / 2.0, 0.0, 0.0);
+const vec3 sphere2Center = vec3(-distance / 2.0, 0.0, 0.0);
+
+float smoothMin(float d1, float d2, float k){
+    float h = exp(-k * d1) + exp(-k * d2);
+    return -log(h) / k;
+}
 
 float distanceFunc(vec3 p){
-    float sphere1 = length(p - vec3(1.0, 0.0, 0.0)) - sphereSize;
-    float sphere2 = length(p - vec3(-1.0, 0.0, 0.0)) - sphereSize;
-    return min(sphere1, sphere2);
+    float sphere1 = length(p - sphere1Center) - sphereSize;
+    float sphere2 = length(p - sphere2Center) - sphereSize;
+
+    return smoothMin(sphere1, sphere2, 2.0);
 }
 
 void main(void){
