@@ -30,9 +30,10 @@ uniform vec2 mouse;
 uniform vec2 resolution;
 
 void main(void){
+    vec2 m = vec2(mouse.x * 2.0 - 1.0, -mouse.y * 2.0 + 1.0);
     vec2 p = (gl_FragCoord.xy * 2.0 - resolution) / min(resolution.x, resolution.y);
-    vec2 color = (vec2(1.0) + p.xy) * 0.5;
-    gl_FragColor = vec4(color, 0.0, 1.0);
+    float t = sin(length(m - p) * 30.0 + time * 5.0);
+    gl_FragColor = vec4(vec3(t), 1.0);
 }
 "#;
 
@@ -49,25 +50,25 @@ pub fn start() -> Result<(), JsValue> {
     let canvas = get_canvas_element_by_id("canvas")?;
     let context = get_webgl_context(&canvas)?;
 
-    // let mouse_x = Rc::new(RefCell::new(0));
-    // let mouse_y = Rc::new(RefCell::new(0));
+    let mouse_x = Rc::new(RefCell::new(0));
+    let mouse_y = Rc::new(RefCell::new(0));
     let canvas_w = canvas.client_width();
     let canvas_h = canvas.client_height();
 
-    // {
-    //     let mouse_x = mouse_x.clone();
-    //     let mouse_y = mouse_y.clone();
-    //     add_event_listener(&canvas, "mousemove", move |event| {
-    //         let mouse_event = event.dyn_into::<web_sys::MouseEvent>().unwrap();
-    //         *mouse_x.borrow_mut() = mouse_event.offset_x();
-    //         *mouse_y.borrow_mut() = mouse_event.offset_y();
-    //     })?;
-    // }
+    {
+        let mouse_x = mouse_x.clone();
+        let mouse_y = mouse_y.clone();
+        add_event_listener(&canvas, "mousemove", move |event| {
+            let mouse_event = event.dyn_into::<web_sys::MouseEvent>().unwrap();
+            *mouse_x.borrow_mut() = mouse_event.offset_x();
+            *mouse_y.borrow_mut() = mouse_event.offset_y();
+        })?;
+    }
 
     let shader_program = init_shaders(&context);
 
-    // let ul_time = context.get_uniform_location(&shader_program, "time");
-    // let ul_mouse = context.get_uniform_location(&shader_program, "mouse");
+    let ul_time = context.get_uniform_location(&shader_program, "time").unwrap();
+    let ul_mouse = context.get_uniform_location(&shader_program, "mouse").unwrap();
     let ul_resolution = context.get_uniform_location(&shader_program, "resolution").unwrap();
     // log(&format!("{:?}, {:?}, {:?}", ul_time, ul_mouse, ul_resolution));
 
@@ -88,21 +89,21 @@ pub fn start() -> Result<(), JsValue> {
 
     context.clear_color(0.0, 0.0, 0.0, 1.0);
 
-    // let start_time = get_current_time();
+    let start_time = get_current_time();
 
     start_animation(move || {
         context.clear(WebGlRenderingContext::COLOR_BUFFER_BIT);
 
-    //     let current_time = get_current_time();
-    //     context.uniform1f(
-    //         Some(&ul_time),
-    //         (current_time - start_time) as f32
-    //     );
+        let current_time = get_current_time();
+        context.uniform1f(
+            Some(&ul_time),
+            (current_time - start_time) as f32
+        );
 
-    //     context.uniform2fv_with_f32_array(
-    //         Some(&ul_mouse),
-    //         &vec![*mouse_x.borrow() as f32, *mouse_y.borrow() as f32]
-    //     );
+        context.uniform2fv_with_f32_array(
+            Some(&ul_mouse),
+            &vec![*mouse_x.borrow() as f32 / canvas_w as f32, *mouse_y.borrow() as f32 / canvas_h as f32]
+        );
 
         context.uniform2fv_with_f32_array(
             Some(&ul_resolution),
