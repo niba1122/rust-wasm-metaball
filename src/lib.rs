@@ -61,7 +61,13 @@ void main(void){
     
     // hit check
     if(abs(distance) < 0.001){
-        gl_FragColor = vec4(vec3(1.0), 1.0);
+        // lighting effect
+        highp vec3 ambientLight = vec3(0.3, 0.3, 0.3);
+        highp vec3 directionalLightColor = vec3(1, 1, 1);
+        highp vec3 directionalVector = normalize(vec3(0.85, 0.8, 0.75));
+        highp float directional = max(dot(rPos.xyz, directionalVector), 0.0);
+        highp vec3 vLighting = ambientLight + (directionalLightColor * directional);
+        gl_FragColor = vec4(vec3(1, 1, 1) * vLighting, 1);
     }else{
         gl_FragColor = vec4(vec3(0.0), 1.0);
     }
