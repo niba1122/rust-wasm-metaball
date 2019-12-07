@@ -65,12 +65,14 @@ pub fn start() -> Result<(), JsValue> {
         })?;
     }
 
-    let shader_program = init_shaders(&context);
+    let shader_program = match init_shaders(&context) {
+        Ok(s) => s,
+        Err(e) => return Err(e)
+    };
 
-    let ul_time = context.get_uniform_location(&shader_program, "time").unwrap();
-    let ul_mouse = context.get_uniform_location(&shader_program, "mouse").unwrap();
-    let ul_resolution = context.get_uniform_location(&shader_program, "resolution").unwrap();
-    // log(&format!("{:?}, {:?}, {:?}", ul_time, ul_mouse, ul_resolution));
+    let ul_time = context.get_uniform_location(&shader_program, "time");
+    let ul_mouse = context.get_uniform_location(&shader_program, "mouse");
+    let ul_resolution = context.get_uniform_location(&shader_program, "resolution");
 
     let (position_buffer, index_buffer) = init_buffers(&context);
     let attrib_location = context.get_attrib_location(&shader_program, "position") as u32;
@@ -94,21 +96,27 @@ pub fn start() -> Result<(), JsValue> {
     start_animation(move || {
         context.clear(WebGlRenderingContext::COLOR_BUFFER_BIT);
 
-        let current_time = get_current_time();
-        context.uniform1f(
-            Some(&ul_time),
-            (current_time - start_time) as f32
-        );
+        if let Some(ul_time) = &ul_time {
+            let current_time = get_current_time();
+            context.uniform1f(
+                Some(&ul_time),
+                (current_time - start_time) as f32
+            );
+        }
 
-        context.uniform2fv_with_f32_array(
-            Some(&ul_mouse),
-            &vec![*mouse_x.borrow() as f32 / canvas_w as f32, *mouse_y.borrow() as f32 / canvas_h as f32]
-        );
+        if let Some(ul_mouse2) = &ul_mouse {
+            context.uniform2fv_with_f32_array(
+                Some(&ul_mouse2),
+                &vec![*mouse_x.borrow() as f32 / canvas_w as f32, *mouse_y.borrow() as f32 / canvas_h as f32]
+            );
+        }
 
-        context.uniform2fv_with_f32_array(
-            Some(&ul_resolution),
-            &vec![canvas_w as f32, canvas_h as f32]
-        );
+        if let Some(ul_resolution) = &ul_resolution {
+            context.uniform2fv_with_f32_array(
+                Some(&ul_resolution),
+                &vec![canvas_w as f32, canvas_h as f32]
+            );
+        }
 
         context.draw_elements_with_i32(WebGlRenderingContext::TRIANGLES, 6, WebGlRenderingContext::UNSIGNED_SHORT, 0);
         context.flush();
@@ -140,21 +148,22 @@ fn get_webgl_context(canvas: &web_sys::HtmlCanvasElement) -> Result<WebGlRenderi
     Ok(context)
 }
 
-fn get_shader(context: &WebGlRenderingContext, shader_type: u32, source: &str) -> WebGlShader {
+fn get_shader(context: &WebGlRenderingContext, shader_type: u32, source: &str) -> Result<WebGlShader, JsValue> {
     let shader = context.create_shader(shader_type).unwrap();
 
     context.shader_source(&shader, source);
     context.compile_shader(&shader);
     let compile_is_succeeded = context.get_shader_parameter(&shader, WebGlRenderingContext::COMPILE_STATUS).as_bool().unwrap();
-    if !compile_is_succeeded {
-        panic!("シェーダーのコンパイルでエラーが発生しました");
+    if compile_is_succeeded {
+        Ok(shader)
+    } else {
+        Err(JsValue::from(&context.get_shader_info_log(&shader).unwrap()))
     }
-    shader
 }
 
-fn init_shaders(context: &WebGlRenderingContext) -> WebGlProgram {
-    let fragment_shader = get_shader(&context, WebGlRenderingContext::FRAGMENT_SHADER, FRAGMENT_SHADER);
-    let vertex_shader = get_shader(&context, WebGlRenderingContext::VERTEX_SHADER, VERTEX_SHADER);
+fn init_shaders(context: &WebGlRenderingContext) -> Result<WebGlProgram, JsValue> {
+    let fragment_shader = get_shader(&context, WebGlRenderingContext::FRAGMENT_SHADER, FRAGMENT_SHADER)?;
+    let vertex_shader = get_shader(&context, WebGlRenderingContext::VERTEX_SHADER, VERTEX_SHADER)?;
 
     let shader_program = context.create_program().unwrap();
     context.attach_shader(&shader_program, &vertex_shader);
@@ -165,12 +174,12 @@ fn init_shaders(context: &WebGlRenderingContext) -> WebGlProgram {
 
     if !shader_is_created {
         let info = context.get_program_info_log(&shader_program).unwrap();
-        error(&format!("シェーダープログラムを初期化できません: {}", info));
+        return Err(JsValue::from(&format!("シェーダープログラムを初期化できません: {}", info)))
     }
 
     context.use_program(Some(&shader_program));
 
-    shader_program
+    Ok(shader_program)
 }
 
 fn init_buffers(context: &WebGlRenderingContext) -> (WebGlBuffer, WebGlBuffer) {
