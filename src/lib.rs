@@ -24,77 +24,119 @@ extern "C" {
 }
 
 static FRAGMENT_SHADER: &'static str = r#"
-    varying highp vec3 vLighting;
+precision mediump float;
+uniform float time;
+uniform vec2 mouse;
+uniform vec2 resolution;
 
-    void main(void) {
-        gl_FragColor = vec4(vec3(1, 1, 1) * vLighting, 1);
-    }
+void main(void){
+    vec2 p = (gl_FragCoord.xy * 2.0 - resolution) / min(resolution.x, resolution.y);
+    vec2 color = (vec2(1.0) + p.xy) * 0.5;
+    gl_FragColor = vec4(color, 0.0, 1.0);
+}
 "#;
 
 static VERTEX_SHADER: &'static str = r#"
-    attribute vec4 aVertexPosition;
-    attribute vec3 aVertexNormal;
+attribute vec3 position;
 
-    uniform mat4 uNormalMatrix;
-    uniform mat4 uModelViewMatrix;
-    uniform mat4 uProjectionMatrix;
-
-    varying highp vec3 vLighting;
-
-    void main(void) {
-        gl_Position = uProjectionMatrix * uModelViewMatrix * aVertexPosition;
-        // Apply lighting effect
-        highp vec3 ambientLight = vec3(0.3, 0.3, 0.3);
-        highp vec3 directionalLightColor = vec3(1, 1, 1);
-        highp vec3 directionalVector = normalize(vec3(0.85, 0.8, 0.75));
-        highp vec4 transformedNormal = uNormalMatrix * vec4(aVertexNormal, 1.0);
-        highp float directional = max(dot(transformedNormal.xyz, directionalVector), 0.0);
-        vLighting = ambientLight + (directionalLightColor * directional);
-    }
+void main(void){
+    gl_Position = vec4(position, 1.0);
+}
 "#;
 
 #[wasm_bindgen]
 pub fn start() -> Result<(), JsValue> {
-    let context = get_webgl_context_by_id("canvas");
+    let canvas = get_canvas_element_by_id("canvas")?;
+    let context = get_webgl_context(&canvas)?;
+
+    // let mouse_x = Rc::new(RefCell::new(0));
+    // let mouse_y = Rc::new(RefCell::new(0));
+    let canvas_w = canvas.client_width();
+    let canvas_h = canvas.client_height();
+
+    // {
+    //     let mouse_x = mouse_x.clone();
+    //     let mouse_y = mouse_y.clone();
+    //     add_event_listener(&canvas, "mousemove", move |event| {
+    //         let mouse_event = event.dyn_into::<web_sys::MouseEvent>().unwrap();
+    //         *mouse_x.borrow_mut() = mouse_event.offset_x();
+    //         *mouse_y.borrow_mut() = mouse_event.offset_y();
+    //     })?;
+    // }
 
     let shader_program = init_shaders(&context);
 
-    {
-        let f = Rc::new(RefCell::new(None));
-        let g = f.clone();
-        *g.borrow_mut() = Some(Closure::wrap(Box::new(move || {
+    // let ul_time = context.get_uniform_location(&shader_program, "time");
+    // let ul_mouse = context.get_uniform_location(&shader_program, "mouse");
+    let ul_resolution = context.get_uniform_location(&shader_program, "resolution").unwrap();
+    // log(&format!("{:?}, {:?}, {:?}", ul_time, ul_mouse, ul_resolution));
 
-            request_animation_frame(f.borrow().as_ref().unwrap());
-        }) as Box<dyn FnMut()>));
+    let (position_buffer, index_buffer) = init_buffers(&context);
+    let attrib_location = context.get_attrib_location(&shader_program, "position") as u32;
 
-        request_animation_frame(g.borrow().as_ref().unwrap());
-    }
+    context.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&position_buffer));
+    context.enable_vertex_attrib_array(attrib_location);
+    context.vertex_attrib_pointer_with_i32(
+        attrib_location,
+        3,
+        WebGlRenderingContext::FLOAT,
+        false,
+        0,
+        0
+    );
+    context.bind_buffer(WebGlRenderingContext::ELEMENT_ARRAY_BUFFER, Some(&index_buffer));
+
+    context.clear_color(0.0, 0.0, 0.0, 1.0);
+
+    // let start_time = get_current_time();
+
+    start_animation(move || {
+        context.clear(WebGlRenderingContext::COLOR_BUFFER_BIT);
+
+    //     let current_time = get_current_time();
+    //     context.uniform1f(
+    //         Some(&ul_time),
+    //         (current_time - start_time) as f32
+    //     );
+
+    //     context.uniform2fv_with_f32_array(
+    //         Some(&ul_mouse),
+    //         &vec![*mouse_x.borrow() as f32, *mouse_y.borrow() as f32]
+    //     );
+
+        context.uniform2fv_with_f32_array(
+            Some(&ul_resolution),
+            &vec![canvas_w as f32, canvas_h as f32]
+        );
+
+        context.draw_elements_with_i32(WebGlRenderingContext::TRIANGLES, 6, WebGlRenderingContext::UNSIGNED_SHORT, 0);
+        context.flush();
+    });
 
     Ok(())
 }
 
-fn get_webgl_context_by_id(id: &str) -> WebGlRenderingContext {
+fn get_canvas_element_by_id(id: &str) -> Result<web_sys::HtmlCanvasElement, JsValue> {
     let document = web_sys::window()
         .unwrap()
         .document()
         .unwrap();
 
-    let canvas = document
-        .get_element_by_id(id)
-        .unwrap()
+    document.get_element_by_id(id)
+        .ok_or(JsValue::from("Element doesn't exist."))?
         .dyn_into::<web_sys::HtmlCanvasElement>()
-        .unwrap();
+        .or_else(|e| Err(JsValue::from(e)))
+}
 
+fn get_webgl_context(canvas: &web_sys::HtmlCanvasElement) -> Result<WebGlRenderingContext, JsValue> {
     let context = canvas
-        .get_context("webgl")
-        .unwrap()
-        .unwrap()
-        .dyn_into::<WebGlRenderingContext>()
-        .unwrap();
+        .get_context("webgl")?
+        .ok_or(JsValue::from("Couldn't get WebGL context.2"))?
+        .dyn_into::<WebGlRenderingContext>()?;
 
     context.viewport(0, 0, canvas.width() as i32, canvas.height() as i32);
 
-    context
+    Ok(context)
 }
 
 fn get_shader(context: &WebGlRenderingContext, shader_type: u32, source: &str) -> WebGlShader {
@@ -127,10 +169,42 @@ fn init_shaders(context: &WebGlRenderingContext) -> WebGlProgram {
 
     context.use_program(Some(&shader_program));
 
-    let vertex_position_attribute = context.get_attrib_location(&shader_program, "aVertexPosition");
-    context.enable_vertex_attrib_array(vertex_position_attribute as u32);
-
     shader_program
+}
+
+fn init_buffers(context: &WebGlRenderingContext) -> (WebGlBuffer, WebGlBuffer) {
+    let position = [
+        -1.0,  1.0, 0.0,
+         1.0,  1.0, 0.0,
+        -1.0, -1.0, 0.0,
+         1.0, -1.0, 0.0
+    ];
+    let position_buffer = context.create_buffer().unwrap();
+    context.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&position_buffer));
+    unsafe {
+        context.buffer_data_with_array_buffer_view(
+            WebGlRenderingContext::ARRAY_BUFFER,
+            &js_sys::Float32Array::view(&position),
+            WebGlRenderingContext::STATIC_DRAW
+        );
+    }
+
+
+    let index = [
+        0, 2, 1,
+        1, 2, 3
+    ];
+    let index_buffer = context.create_buffer().unwrap();
+    context.bind_buffer(WebGlRenderingContext::ELEMENT_ARRAY_BUFFER, Some(&index_buffer));
+    unsafe {
+        context.buffer_data_with_array_buffer_view(
+            WebGlRenderingContext::ELEMENT_ARRAY_BUFFER,
+            &js_sys::Uint16Array::view(&index),
+            WebGlRenderingContext::STATIC_DRAW
+        );
+    }
+
+    (position_buffer, index_buffer)
 }
 
 // fn format_as_matrix<T: std::fmt::Display>(vec: Vec<T>, len_row: usize, len_column: usize) -> String {
@@ -160,3 +234,26 @@ fn request_animation_frame(f: &Closure<dyn FnMut()>) {
         .expect("should register `requestAnimationFrame` OK");
 }
 
+fn add_event_listener<T>(target: &web_sys::Element, event_name: &str, handler: T) -> Result<(), JsValue>
+where
+    T: 'static + FnMut(web_sys::Event)
+{
+    let cb = Closure::wrap(Box::new(handler) as Box<dyn FnMut(_)>);
+    target.add_event_listener_with_callback(event_name, cb.as_ref().unchecked_ref())?;
+    cb.forget();
+
+    Ok(())
+}
+
+fn start_animation<T>(mut handler: T)
+where T: 'static + FnMut()
+{ 
+    let f = Rc::new(RefCell::new(None));
+    let g = f.clone();
+    *g.borrow_mut() = Some(Closure::wrap(Box::new(move || {
+        handler();
+        request_animation_frame(f.borrow().as_ref().unwrap());
+    }) as Box<dyn FnMut()>));
+
+    request_animation_frame(g.borrow().as_ref().unwrap());
+}

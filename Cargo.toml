@@ -34,7 +34,10 @@ version = "0.3.4"
 features = [
   'Document',
   'Element',
+  'Event',
+  'EventTarget',
   'HtmlCanvasElement',
+  'MouseEvent',
   'WebGlBuffer',
   'WebGlRenderingContext',
   'WebGl2RenderingContext',
